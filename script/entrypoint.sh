@@ -12,10 +12,7 @@ TRY_LOOP="20"
 : "${AIRFLOW__CORE__FERNET_KEY:=${FERNET_KEY:=$(python -c "from cryptography.fernet import Fernet; FERNET_KEY = Fernet.generate_key().decode(); print(FERNET_KEY)")}}"
 : "${AIRFLOW__CORE__EXECUTOR:=${EXECUTOR:-Sequential}Executor}"
 
-# Load DAGs examples (default: Yes)
-if [[ -z "$AIRFLOW__CORE__LOAD_EXAMPLES" && "${LOAD_EX:=n}" == n ]]; then
-  AIRFLOW__CORE__LOAD_EXAMPLES=False
-fi
+AIRFLOW__CORE__LOAD_EXAMPLES=False
 
 export \
   AIRFLOW_HOME \
@@ -25,7 +22,7 @@ export \
 
 # Install custom python package if requirements.txt is present
 if [ -e "/requirements.txt" ]; then
-    $(command -v pip) install --user -r /requirements.txt
+  $(command -v pip) install --user -r /requirements.txt
 fi
 
 wait_for_port() {
@@ -41,6 +38,9 @@ wait_for_port() {
     sleep 5
   done
 }
+
+# Syncs dags with the git repository provided
+python /eyk/sync.py&
 
 # Other executors than SequentialExecutor drive the need for an SQL database, here PostgreSQL is used
 if [ "$AIRFLOW__CORE__EXECUTOR" != "SequentialExecutor" ]; then
@@ -108,28 +108,36 @@ if [ "$AIRFLOW__CORE__EXECUTOR" = "CeleryExecutor" ]; then
 fi
 
 case "$1" in
-  webserver)
-    airflow initdb
-    if [ "$AIRFLOW__CORE__EXECUTOR" = "LocalExecutor" ] || [ "$AIRFLOW__CORE__EXECUTOR" = "SequentialExecutor" ]; then
-      # With the "Local" and "Sequential" executors it should all run in one container.
-      airflow scheduler &
-    fi
-    exec airflow webserver
-    ;;
-  worker|scheduler)
-    # Give the webserver time to run initdb.
-    sleep 10
-    exec airflow "$@"
-    ;;
-  flower)
-    sleep 10
-    exec airflow "$@"
-    ;;
-  version)
-    exec airflow "$@"
-    ;;
-  *)
-    # The command is something like bash, not an airflow subcommand. Just run it in the right environment.
-    exec "$@"
-    ;;
+webserver)
+  airflow initdb
+
+  airflow create_user -r Admin \
+    -u $AIRFLOW_DEFAULT_USERNAME \
+    -f $AIRFLOW_DEFAULT_FIRSTNAME \
+    -l $AIRFLOW_DEFAULT_LASTNAME \
+    -p $AIRFLOW_DEFAULT_PASSWORD \
+    -e $AIRFLOW_DEFAULT_EMAIL
+
+  if [ "$AIRFLOW__CORE__EXECUTOR" = "LocalExecutor" ] || [ "$AIRFLOW__CORE__EXECUTOR" = "SequentialExecutor" ]; then
+    # With the "Local" and "Sequential" executors it should all run in one container.
+    airflow scheduler &
+  fi
+  exec airflow webserver
+  ;;
+worker | scheduler)
+  # Give the webserver time to run initdb.
+  sleep 10
+  exec airflow "$@"
+  ;;
+flower)
+  sleep 10
+  exec airflow "$@" --basic_auth=$AIRFLOW_DEFAULT_USERNAME:$AIRFLOW_DEFAULT_PASSWORD
+  ;;
+version)
+  exec airflow "$@"
+  ;;
+*)
+  # The command is something like bash, not an airflow subcommand. Just run it in the right environment.
+  exec "$@"
+  ;;
 esac

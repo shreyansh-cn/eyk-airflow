@@ -36,7 +36,6 @@ RUN set -ex \
         libssl-dev \
         libffi-dev \
         libpq-dev \
-        git \
     ' \
     && apt-get update -yqq \
     && apt-get upgrade -yqq \
@@ -46,6 +45,7 @@ RUN set -ex \
         build-essential \
         default-libmysqlclient-dev \
         apt-utils \
+        git \
         curl \
         rsync \
         netcat \
@@ -59,26 +59,29 @@ RUN set -ex \
     && pip install pyOpenSSL \
     && pip install ndg-httpsclient \
     && pip install pyasn1 \
-    && pip install apache-airflow[crypto,celery,postgres,hive,jdbc,mysql,ssh${AIRFLOW_DEPS:+,}${AIRFLOW_DEPS}]==${AIRFLOW_VERSION} \
+    && pip install apache-airflow[crypto,password,celery,postgres,hive,jdbc,mysql,ssh${AIRFLOW_DEPS:+,}${AIRFLOW_DEPS}]==${AIRFLOW_VERSION} \
     && pip install 'redis==3.2' \
     && if [ -n "${PYTHON_DEPS}" ]; then pip install ${PYTHON_DEPS}; fi \
     && apt-get purge --auto-remove -yqq $buildDeps \
     && apt-get autoremove -yqq --purge \
     && apt-get clean \
     && rm -rf \
-        /var/lib/apt/lists/* \
-        /tmp/* \
-        /var/tmp/* \
-        /usr/share/man \
-        /usr/share/doc \
-        /usr/share/doc-base
+    /var/lib/apt/lists/* \
+    /tmp/* \
+    /var/tmp/* \
+    /usr/share/man \
+    /usr/share/doc \
+    /usr/share/doc-base
 
 COPY script/entrypoint.sh /entrypoint.sh
+COPY script/sync-dags.sh /eyk/sync-dags.sh
+COPY script/sync.py /eyk/sync.py
 COPY config/airflow.cfg ${AIRFLOW_USER_HOME}/airflow.cfg
 
 RUN chown -R airflow: ${AIRFLOW_USER_HOME}
+RUN chown -R airflow: /eyk
 
-EXPOSE 8080 5555 8793
+EXPOSE 8080 5555
 
 USER airflow
 WORKDIR ${AIRFLOW_USER_HOME}
